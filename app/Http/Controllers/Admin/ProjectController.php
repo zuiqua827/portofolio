@@ -5,12 +5,14 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Project;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 class ProjectController extends Controller
 {
     public function index()
     {
-        $projects = Project::latest()->get();
+        $projects = Project::latest()->paginate(12);
         return view('admin.projects.index', compact('projects'));
     }
 
@@ -21,8 +23,25 @@ class ProjectController extends Controller
 
     public function store(Request $request)
     {
-        Project::create($request->all());
-        return redirect()->route('projects.index')->with('success', 'Berhasil tambah project');
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'description' => 'required|string',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:5120', // 5MB
+            'link' => 'nullable|url|max:255',
+        ]);
+
+        if ($request->hasFile('image')) {
+            $validated['image'] = $request->file('image')->store('projects', 'public');
+        }
+
+        Project::create($validated);
+
+        return redirect()->route('admin.projects.index')->with('success', 'Project berhasil ditambahkan!');
+    }
+
+    public function show(Project $project)
+    {
+        return view('admin.projects.show', compact('project'));
     }
 
     public function edit(Project $project)
@@ -32,13 +51,36 @@ class ProjectController extends Controller
 
     public function update(Request $request, Project $project)
     {
-        $project->update($request->all());
-        return redirect()->route('projects.index')->with('success', 'Berhasil update');
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'description' => 'required|string',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:5120',
+            'link' => 'nullable|url|max:255',
+        ]);
+
+        if ($request->hasFile('image')) {
+            // Delete old image
+            if ($project->image) {
+                Storage::disk('public')->delete($project->image);
+            }
+            $validated['image'] = $request->file('image')->store('projects', 'public');
+        }
+
+        $project->update($validated);
+
+        return redirect()->route('admin.projects.index')->with('success', 'Project berhasil diupdate!');
     }
 
     public function destroy(Project $project)
     {
+        // Delete image
+        if ($project->image) {
+            Storage::disk('public')->delete($project->image);
+        }
+
         $project->delete();
-        return back()->with('success', 'Berhasil hapus');
+
+        return response()->json(['success' => true, 'message' => 'Project berhasil dihapus!']);
     }
 }
+
